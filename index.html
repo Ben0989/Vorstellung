@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fahrstunde Haltestellen – Hattingen / Bochum</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root{
+      --bg:#0f172a;
+      --panel:#111827;
+      --card:#ffffff;
+      --text:#111827;
+      --muted:#64748b;
+      --accent:#ef4444;
+      --blue:#2563eb;
+      --green:#16a34a;
+      --yellow:#f59e0b;
+      --border:#e5e7eb;
+      --shadow:0 18px 40px rgba(0,0,0,.25);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Arial,Helvetica,sans-serif;background:#e5e7eb;color:var(--text)}
+    .app{display:grid;grid-template-columns:390px 1fr;height:100vh;overflow:hidden}
+    aside{background:linear-gradient(180deg,#0f172a,#111827);color:white;padding:18px;overflow:auto}
+    h1{font-size:22px;margin:0 0 6px;line-height:1.2}
+    .sub{font-size:13px;color:#cbd5e1;line-height:1.45;margin-bottom:14px}
+    .controls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0}
+    button{border:0;border-radius:12px;padding:11px 12px;font-weight:700;cursor:pointer;background:#fff;color:#111827;box-shadow:0 8px 22px rgba(0,0,0,.18)}
+    button.primary{background:var(--accent);color:white}
+    button.secondary{background:#1f2937;color:white;border:1px solid rgba(255,255,255,.15)}
+    .progressWrap{height:8px;background:#334155;border-radius:999px;overflow:hidden;margin:8px 0 16px}
+    .progress{height:100%;width:0;background:linear-gradient(90deg,#f59e0b,#ef4444);transition:width .25s}
+    .legend{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+    .legend div{font-size:12px;background:rgba(255,255,255,.08);padding:8px;border-radius:10px;color:#dbeafe}
+    .stopList{display:flex;flex-direction:column;gap:10px}
+    .stop{background:white;color:#111827;border-radius:16px;padding:13px;border-left:6px solid #94a3b8;box-shadow:0 12px 24px rgba(0,0,0,.2);cursor:pointer;transition:.2s transform,.2s opacity}
+    .stop:hover{transform:translateY(-1px)}
+    .stop.active{outline:3px solid rgba(239,68,68,.55);transform:scale(1.01)}
+    .stop h3{margin:0 0 6px;font-size:16px;display:flex;align-items:center;gap:7px}
+    .stop p{font-size:13px;line-height:1.45;margin:0;color:#374151}
+    .tag{display:inline-block;font-size:11px;font-weight:800;padding:4px 7px;border-radius:999px;margin:6px 5px 0 0;background:#e5e7eb;color:#111827}
+    .danger{border-left-color:#ef4444}.warn{border-left-color:#f59e0b}.info{border-left-color:#2563eb}.ok{border-left-color:#16a34a}
+    #map{height:100%;width:100%;z-index:1}
+    .topbar{position:absolute;top:14px;left:410px;right:20px;z-index:800;display:flex;gap:10px;align-items:center;pointer-events:none}
+    .headline{background:white;border-radius:16px;padding:12px 16px;box-shadow:var(--shadow);max-width:720px;pointer-events:auto}
+    .headline b{display:block;font-size:16px}.headline span{font-size:13px;color:#475569;line-height:1.4}
+    .streetPanel{position:absolute;right:18px;bottom:18px;width:390px;max-width:calc(100vw - 430px);background:white;border-radius:18px;z-index:900;box-shadow:var(--shadow);overflow:hidden}
+    .streetPanel img{width:100%;height:210px;object-fit:cover;display:block;background:#e5e7eb}
+    .streetBody{padding:12px 14px}.streetBody h2{font-size:17px;margin:0 0 5px}.streetBody p{font-size:13px;color:#475569;line-height:1.45;margin:0}
+    .leaflet-marker-icon.carIcon{transition:transform .15s linear}
+    .pulse{width:20px;height:20px;border-radius:50%;background:#ef4444;border:3px solid #fff;box-shadow:0 0 0 0 rgba(239,68,68,.65);animation:pulse 1.7s infinite}
+    @keyframes pulse{70%{box-shadow:0 0 0 16px rgba(239,68,68,0)}100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}}
+    .notice{font-size:12px;color:#cbd5e1;line-height:1.4;margin-top:12px;border-top:1px solid rgba(255,255,255,.15);padding-top:12px}
+    @media(max-width:900px){.app{grid-template-columns:1fr;grid-template-rows:auto 1fr}aside{max-height:48vh}.topbar{left:12px;right:12px}.streetPanel{left:12px;right:12px;width:auto;max-width:none}.streetPanel img{height:150px}}
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>Fahrstunde: Haltestellen</h1>
+    <div class="sub">Präsentations-App für die Strecke von der Fahrschule Richtung Bochum. Schwerpunkt: Bus- und Bahnhaltestellen, Warnblinklicht, Straßenbahn auf eigenem/gleichem Fahrstreifen und Schutz durch Lichtzeichen.</div>
+    <div class="controls">
+      <button class="primary" id="playBtn">▶ Animation starten</button>
+      <button class="secondary" id="resetBtn">↺ Zurücksetzen</button>
+    </div>
+    <div class="progressWrap"><div class="progress" id="progress"></div></div>
+    <div class="legend">
+      <div>🔴 Gefahren-/Aufmerksamkeitsstelle</div>
+      <div>🟡 Warnblink-/Haltestellenregel</div>
+      <div>🔵 Straßenbahn / Schienenlage</div>
+      <div>🟢 Cooldown / Rückfahrt</div>
+    </div>
+    <div class="stopList" id="stopList"></div>
+    <div class="notice">Hinweis: Die Karte nutzt OpenStreetMap-Kacheln. Echte Google-Satellitenbilder und Google-Street-View benötigen einen Google-Maps-API-Key und dürfen nicht einfach kopiert eingebunden werden. Die mitgelieferten Bilder werden nur als lokale Präsentationsbilder verwendet.</div>
+  </aside>
+  <main style="position:relative">
+    <div id="map"></div>
+    <div class="topbar"><div class="headline" id="headline"><b>Start der Präsentation</b><span>Wähle links eine Station oder starte die Animation.</span></div></div>
+    <div class="streetPanel" id="streetPanel">
+      <img src="assets/route.jpeg" alt="Streckenübersicht">
+      <div class="streetBody"><h2>Streckenübersicht</h2><p>Roter Linienverlauf aus deiner Skizze. Die App führt die kritischen Haltestellen nacheinander an.</p></div>
+    </div>
+  </main>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const route = [
+  [51.3965,7.1819], [51.3980,7.1787], [51.4002,7.1753], [51.4025,7.1711], [51.4054,7.1654],
+  [51.4089,7.1585], [51.4116,7.1548], [51.4152,7.1506], [51.4194,7.1512], [51.4236,7.1574],
+  [51.4266,7.1643], [51.4287,7.1694], [51.4300,7.1748], [51.4267,7.1790], [51.4216,7.1809],
+  [51.4167,7.1782], [51.4132,7.1748], [51.4101,7.1737], [51.4074,7.1713], [51.4050,7.1687],
+  [51.4023,7.1659], [51.4070,7.1699], [51.4142,7.1775], [51.4212,7.1811]
+];
+const stops = [
+  {title:'Start: Fahrschule', coord:[51.3965,7.1819], type:'ok', icon:'🏁', img:'assets/route.jpeg', tags:['Orientierung','Einstieg'], text:'Abfahrt Richtung Bochum. Lernziel kurz setzen: Haltestellen sicher erkennen, Regeln unterscheiden und rechtzeitig handeln.'},
+  {title:'Bushaltestelle Ruhrbrücke', coord:[51.4054,7.1654], type:'warn', icon:'🚌', img:'assets/route.jpeg', tags:['Bus','ohne/mit Warnblinklicht'], text:'Beginn des Themas. Beobachtungsauftrag: Haltestelle erkennen, Busverhalten prüfen, Warnblinklicht unterscheiden, Geschwindigkeit anpassen.'},
+  {title:'Denkmalstraße: Schienen mittig + Behelfsampel', coord:[51.4236,7.1574], type:'info', icon:'🚦', img:'assets/route.jpeg', tags:['Straßenbahn','Gelb/Rot','Schleifkontakt'], text:'Schienen liegen noch mittig. Die Behelfsampel schützt Ein- und Aussteiger. Bei Gelb/Rot: anhalten, nicht überholen, erhöhte Aufmerksamkeit.'},
+  {title:'Oberwinzerfeld: Haltestelle + Schutzampel', coord:[51.4287,7.1694], type:'info', icon:'🚋', img:'assets/route.jpeg', tags:['Bahn','Ein-/Aussteigen','Ampelschutz'], text:'Auch hier verhindert die Lichtzeichenanlage ein Überholen während der Fahrgastwechselphase. Fahrschüler soll erkennen: Technik ersetzt nicht eigene Sicherungspflicht.'},
+  {title:'Nach Oberwinzerfeld: Schienen auf unserem Fahrstreifen', coord:[51.4267,7.1790], type:'danger', icon:'⚠️', img:'assets/linden_mitte.jpeg', tags:['Schienenwechsel','Bahn im Fahrstreifen'], text:'Kernpunkt: Straßenbahnen fahren nicht nur in der Fahrbahnmitte. Ab hier liegen die Schienen auf dem eigenen Fahrstreifen. Abstand, Blickführung und Fluchtmöglichkeiten besprechen.'},
+  {title:'Bahn hält am Fahrbahnrand – Überholen links möglich', coord:[51.4216,7.1809], type:'danger', icon:'👀', img:'assets/linden_mitte.jpeg', tags:['keine Schutzampel','Fahrgäste','links überholen'], text:'Anders als zuvor schützt keine Ampel die Fahrgäste. Linksüberholen ist baulich möglich, aber nur mit äußerster Vorsicht und angepasster Geschwindigkeit.'},
+  {title:'Linden Mitte: unterschiedliche Haltestellenbauformen', coord:[51.4191,7.1800], type:'info', icon:'🚋', img:'assets/linden_mitte.jpeg', tags:['abgegrenzt','Gegenrichtung auf Fahrbahn'], text:'Fahrtrichtung Bochum: abgegrenzte Haltestelle. Gegenrichtung: Haltestelle auf der Fahrbahn. Schüler soll beide Situationen vergleichen und Risiken benennen.'},
+  {title:'Rauendahl: rotes Dreieck / Bus mit Warnblinklicht', coord:[51.4112,7.1761], type:'warn', icon:'🔺', img:'assets/route.jpeg', tags:['Schul-/Linienbus','Warnblinklicht','Vorbeifahren'], text:'Haltestellen mit rotem Dreieck. Hier ist mit Bussen mit Warnblinklicht zu rechnen. Vorbeifahren nur mit Schrittgeschwindigkeit, ausreichendem Abstand und Bremsbereitschaft.'},
+  {title:'Rückfahrt zur Fahrschule – Cooldown', coord:[51.3965,7.1819], type:'ok', icon:'✅', img:'assets/route.jpeg', tags:['Reflexion','Transfer'], text:'Keine weiteren Haltestellen als Schwerpunkt. Kurze Auswertung: Welche Haltestellenart war kritisch? Welche Regel greift bei Warnblinklicht? Was war neu bei der Straßenbahn?'}
+];
+const map = L.map('map',{zoomControl:true}).setView([51.4135,7.1710],13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap-Mitwirkende'}).addTo(map);
+L.polyline(route,{color:'#ef4444',weight:5,opacity:.9}).addTo(map);
+L.polyline(route,{color:'#fff',weight:2,opacity:.7,dashArray:'8 12'}).addTo(map);
+const carIcon = L.divIcon({className:'carIcon', html:'<div style="font-size:30px;filter:drop-shadow(0 4px 4px rgba(0,0,0,.35))">🚗</div>', iconSize:[34,34], iconAnchor:[17,17]});
+const car = L.marker(route[0],{icon:carIcon}).addTo(map);
+const markerMap = [];
+stops.forEach((s,i)=>{
+  const m = L.marker(s.coord,{icon:L.divIcon({className:'',html:`<div class="pulse" title="${s.title}"></div>`,iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);
+  m.on('click',()=>selectStop(i,true)); markerMap.push(m);
+});
+map.fitBounds(L.latLngBounds(route),{padding:[40,40]});
+const list = document.getElementById('stopList');
+stops.forEach((s,i)=>{
+  const el = document.createElement('div'); el.className=`stop ${s.type}`; el.dataset.index=i;
+  el.innerHTML=`<h3>${s.icon} ${s.title}</h3><p>${s.text}</p>${s.tags.map(t=>`<span class="tag">${t}</span>`).join('')}`;
+  el.onclick=()=>selectStop(i,true); list.appendChild(el);
+});
+let currentIndex=0, playing=false, timer=null;
+function selectStop(i,pan=false){
+  currentIndex=i;
+  document.querySelectorAll('.stop').forEach(e=>e.classList.remove('active'));
+  const active=document.querySelector(`.stop[data-index="${i}"]`); if(active){active.classList.add('active'); active.scrollIntoView({block:'nearest',behavior:'smooth'});}
+  const s=stops[i];
+  document.getElementById('headline').innerHTML=`<b>${s.icon} ${s.title}</b><span>${s.text}</span>`;
+  document.querySelector('#streetPanel img').src=s.img;
+  document.querySelector('#streetPanel h2').textContent=s.title;
+  document.querySelector('#streetPanel p').textContent=s.text;
+  document.getElementById('progress').style.width=((i)/(stops.length-1)*100)+'%';
+  car.setLatLng(s.coord); if(pan) map.flyTo(s.coord,16,{duration:.9});
+}
+function animateRoute(){
+  let step=0; playing=true; document.getElementById('playBtn').textContent='⏸ Animation läuft';
+  clearInterval(timer); selectStop(0,true);
+  timer=setInterval(()=>{
+    step++;
+    const p = step/(route.length-1);
+    document.getElementById('progress').style.width=Math.min(100,p*100)+'%';
+    if(step<route.length){car.setLatLng(route[step]); map.panTo(route[step],{animate:true,duration:.25});}
+    let nearest=0, dist=Infinity;
+    stops.forEach((s,i)=>{const d=Math.hypot(s.coord[0]-route[Math.min(step,route.length-1)][0],s.coord[1]-route[Math.min(step,route.length-1)][1]); if(d<dist){dist=d; nearest=i;}});
+    if(nearest!==currentIndex) selectStop(nearest,false);
+    if(step>=route.length-1){clearInterval(timer); playing=false; document.getElementById('playBtn').textContent='▶ Animation starten'; selectStop(stops.length-1,true);}
+  },900);
+}
+document.getElementById('playBtn').onclick=()=> playing ? (clearInterval(timer), playing=false, document.getElementById('playBtn').textContent='▶ Animation starten') : animateRoute();
+document.getElementById('resetBtn').onclick=()=>{clearInterval(timer);playing=false;document.getElementById('playBtn').textContent='▶ Animation starten';selectStop(0,true)};
+selectStop(0,false);
+</script>
+</body>
+</html>
