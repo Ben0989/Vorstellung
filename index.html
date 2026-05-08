@@ -43,7 +43,7 @@
       <label>Titel</label><input id="stopTitle" placeholder="z. B. Einfädelungsstreifen A 43">
       <label>Typ</label><select id="stopType"><option value="drive">🟣 Fahraufgabe</option><option value="danger">🔴 Risiko/Gefahr</option><option value="info">🔵 Bahn/Schienen/Sonderlage</option><option value="warn">🟡 Haltestelle/Warnblinklicht</option><option value="ok">🟢 Reflexion/Cooldown</option></select>
       <label>Notiz / Beobachtungsauftrag</label><textarea id="stopText" placeholder="Was soll der Fahrschüler wahrnehmen, entscheiden, durchführen und begründen?"></textarea>
-      <div class="row" style="margin-top:8px"><button class="primary smallbtn" id="addStopBtn">Punkt an Kartenmitte setzen</button><button class="secondary smallbtn" id="aiBtn">KI-Schwerpunkte erzeugen</button></div>
+      <div class="row" style="margin-top:8px"><button class="primary smallbtn" id="addStopBtn">Punkt ans Routenende setzen</button><button class="secondary smallbtn" id="aiBtn">KI-Schwerpunkte erzeugen</button></div>
       <div id="aiResult" class="aiBox" style="display:none"></div>
     </div>
 
@@ -71,6 +71,16 @@ let routeLayer=L.polyline(route,{color:'#ef4444',weight:5,opacity:.9}).addTo(map
 let dashLayer=L.polyline(route,{color:'#fff',weight:2,opacity:.7,dashArray:'8 12'}).addTo(map);
 const car=L.marker(route[0]||[51.4135,7.1710],{icon:L.divIcon({className:'',html:'<div style="font-size:30px;filter:drop-shadow(0 4px 4px rgba(0,0,0,.35))">🚗</div>',iconSize:[34,34],iconAnchor:[17,17]})}).addTo(map);
 let markerLayer=L.layerGroup().addTo(map), editMode=false, gpsWatch=null, currentIndex=0, playing=false, timer=null;
+
+function getRouteEndCoord(){
+  if(route.length){
+    const last = route[route.length - 1];
+    return [last[0], last[1]];
+  }
+  const c = map.getCenter();
+  return [c.lat, c.lng];
+}
+
 function save(){localStorage.setItem('fgk_route',JSON.stringify(route));localStorage.setItem('fgk_stops',JSON.stringify(stops));}
 function fillTasks(){const sel=document.getElementById('taskSelect');sel.innerHTML=FAHRAUFGABEN.map(t=>`<option>${t}</option>`).join('');}
 function redrawRoute(){routeLayer.setLatLngs(route);dashLayer.setLatLngs(route);if(route.length)car.setLatLng(route[0]);save();renderPointList();if(route.length>1)map.fitBounds(L.latLngBounds(route),{padding:[40,40]});}
@@ -93,9 +103,9 @@ function generateFocus(task,text){const t=(task+' '+(text||'')).toLowerCase();le
  if(!items.length)items=['Wahrnehmung → Entscheidung → Handlung laut abfragen','Risiko und Rechtslage vom Fahrschüler begründen lassen','nach der Stelle kurze Reflexion mit konkreter Korrektur'];
  return [...new Set(items)];
 }
-function renderAi(items){const box=document.getElementById('aiResult');box.style.display='block';box.innerHTML='<b>KI-Schwerpunkte, einzeln löschbar</b><div class="chipWrap" id="chipWrap">'+items.map((i,idx)=>`<span class="chip" data-i="${idx}">${i}<button onclick="this.parentElement.remove()">×</button></span>`).join('')+'</div><button class="green smallbtn" style="margin-top:8px" onclick="addAiAsStop()">Diese Schwerpunkte als Punkt speichern</button>';}
+function renderAi(items){const box=document.getElementById('aiResult');box.style.display='block';box.innerHTML='<b>KI-Schwerpunkte, einzeln löschbar</b><div class="chipWrap" id="chipWrap">'+items.map((i,idx)=>`<span class="chip" data-i="${idx}">${i}<button onclick="this.parentElement.remove()">×</button></span>`).join('')+'</div><button class="green smallbtn" style="margin-top:8px" onclick="addAiAsStop()">Diese Schwerpunkte ans Routenende speichern</button>';}
 function getCurrentChips(){return Array.from(document.querySelectorAll('#chipWrap .chip')).map(c=>c.childNodes[0].nodeValue.trim()).filter(Boolean);}
-function addAiAsStop(){const task=document.getElementById('taskSelect').value;const c=map.getCenter();const title=document.getElementById('stopTitle').value.trim()||task;const type=document.getElementById('stopType').value;const text=document.getElementById('stopText').value.trim()||'KI-Schwerpunkt zur Fahraufgabe.';const tags=getCurrentChips();stops.push({title,coord:[c.lat,c.lng],type,icon:typeIcon[type],task,tags,text});save();renderMarkers();renderList();selectStop(stops.length-1,true);}
+function addAiAsStop(){const task=document.getElementById('taskSelect').value;const coord=getRouteEndCoord();const title=document.getElementById('stopTitle').value.trim()||task;const type=document.getElementById('stopType').value;const text=document.getElementById('stopText').value.trim()||'KI-Schwerpunkt zur Fahraufgabe.';const tags=getCurrentChips();stops.push({title,coord,type,icon:typeIcon[type],task,tags,text});save();renderMarkers();renderList();selectStop(stops.length-1,true);}
 document.getElementById('playBtn').onclick=()=>playing?(clearInterval(timer),playing=false,document.getElementById('playBtn').textContent='▶ Animation starten'):animateRoute();
 document.getElementById('resetBtn').onclick=()=>{clearInterval(timer);playing=false;document.getElementById('playBtn').textContent='▶ Animation starten';if(stops.length)selectStop(0,true)};
 document.getElementById('editRouteBtn').onclick=()=>{editMode=!editMode;document.getElementById('editRouteBtn').textContent=editMode?'✓ Klick-Zeichnen aktiv':'✚ Route per Klick zeichnen'};
@@ -103,7 +113,7 @@ map.on('click',e=>{if(!editMode)return;route.push([e.latlng.lat,e.latlng.lng]);r
 document.getElementById('undoBtn').onclick=()=>{route.pop();redrawRoute();};
 document.getElementById('clearRouteBtn').onclick=()=>{if(confirm('Route wirklich komplett löschen?')){route=[];redrawRoute();}};
 document.getElementById('gpsBtn').onclick=()=>{if(gpsWatch){navigator.geolocation.clearWatch(gpsWatch);gpsWatch=null;document.getElementById('gpsBtn').textContent='📍 GPS-Aufzeichnung';return;}if(!navigator.geolocation){alert('GPS wird vom Browser nicht unterstützt.');return;}gpsWatch=navigator.geolocation.watchPosition(pos=>{const p=[pos.coords.latitude,pos.coords.longitude];route.push(p);redrawRoute();map.panTo(p);},err=>alert('GPS-Fehler: '+err.message),{enableHighAccuracy:true,maximumAge:1000,timeout:10000});document.getElementById('gpsBtn').textContent='■ GPS stoppen';};
-document.getElementById('addStopBtn').onclick=()=>{const task=document.getElementById('taskSelect').value;const c=map.getCenter();const title=document.getElementById('stopTitle').value.trim()||task;const type=document.getElementById('stopType').value;const text=document.getElementById('stopText').value.trim()||'Beobachtungsauftrag ergänzen.';const tags=generateFocus(task,text).slice(0,3);stops.push({title,coord:[c.lat,c.lng],type,icon:typeIcon[type],task,tags,text});save();renderMarkers();renderList();selectStop(stops.length-1,true);};
+document.getElementById('addStopBtn').onclick=()=>{const task=document.getElementById('taskSelect').value;const coord=getRouteEndCoord();const title=document.getElementById('stopTitle').value.trim()||task;const type=document.getElementById('stopType').value;const text=document.getElementById('stopText').value.trim()||'Beobachtungsauftrag ergänzen.';const tags=generateFocus(task,text).slice(0,3);stops.push({title,coord,type,icon:typeIcon[type],task,tags,text});save();renderMarkers();renderList();selectStop(stops.length-1,true);};
 document.getElementById('aiBtn').onclick=()=>{renderAi(generateFocus(document.getElementById('taskSelect').value,document.getElementById('stopText').value));};
 fillTasks();renderMarkers();renderList();redrawRoute();if(stops.length)selectStop(0,false);
 </script>
